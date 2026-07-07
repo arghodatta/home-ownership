@@ -9,5 +9,12 @@ dependencies = [
     "numpy>=2.5.1",
     "pandas>=3.0.3",
     "plotly>=6.8.0",
+    "scipy>=1.18.0",
     "streamlit>=1.59.0",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.3.0",
+    "jupyterlab>=4.6.1",
 ]
