@@ -31,23 +31,40 @@ def verdict_banner(s: dict) -> None:
         )
 
 
-def kpi_row(s: dict) -> None:
-    """Top-line KPI tiles."""
+def _delta_vs(cur, base, decimals=0):
+    """Money-formatted delta vs a baseline, or None when negligible (< $1)."""
+    if base is None:
+        return None
+    d = cur - base
+    if abs(d) < 1:
+        return None
+    return f"{'+' if d >= 0 else '−'}{_fmt_money(abs(d), decimals)} vs default"
+
+
+def kpi_row(s: dict, base: dict | None = None) -> None:
+    """Top-line KPI tiles. When ``base`` (the default-Params summary) is given,
+    the cost tiles show a delta vs the defaults; lower cost is coloured good."""
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(
         "All-in monthly cost (yr 1)",
         _fmt_money(s["yr1_monthly_cost"]),
+        delta=_delta_vs(s["yr1_monthly_cost"], base and base["yr1_monthly_cost"]),
+        delta_color="inverse",
         help="Cash outflow incl. P&I, taxes, HOA, insurance, maintenance, PMI, net of tax shield.",
     )
     c2.metric(
         "NPV cost of owning",
         _fmt_money(s["npv_cost"]),
+        delta=_delta_vs(s["npv_cost"], base and base["npv_cost"]),
+        delta_color="inverse",
         help="Economic cost in today's dollars, discounted at the market return.",
     )
     c3.metric(
         "Equivalent annual cost",
         _fmt_money(s["eac"]),
-        help=f"{s['eac_pct_price']:.2%} of home price per year.",
+        delta=_delta_vs(s["eac"], base and base["eac"]),
+        delta_color="inverse",
+        help=f"{s['eac_pct_price']:.2%} of home price per year. Renting: {_fmt_money(s['eac_rent'])}/yr.",
     )
     c4.metric(
         "Buy − Rent (terminal)",
@@ -57,8 +74,8 @@ def kpi_row(s: dict) -> None:
     )
 
 
-def sale_bridge(s: dict) -> None:
-    """Sale-at-horizon waterfall as a small table."""
+def sale_table(s: dict) -> None:
+    """Sale-at-horizon bridge as a small table (companion to the waterfall)."""
     st.markdown("**Sale at horizon**")
     rows = [
         ("Sale price", s["sale_price"]),
@@ -111,6 +128,48 @@ def annual_cost_table(res: dict) -> None:
         hide_index=True,
         width="stretch",
     )
+
+
+def _fmt_param(value, kind):
+    """Format a raw model parameter value for display, per its widget kind."""
+    if kind == "pct":
+        return f"{value * 100:.3g}%"
+    if kind == "int":
+        return f"{int(value):,}"
+    return _fmt_money(value)
+
+
+def scenario_compare(cur_p, pin_p, cur_s, pin_s) -> None:
+    """Side-by-side of a pinned scenario (A) vs the current one (B)."""
+    st.markdown("**Outcomes — current (B) vs pinned (A)**")
+    metrics = [
+        ("Buy − Rent (terminal)", "buy_minus_rent", "normal"),
+        ("NPV cost of owning", "npv_cost", "inverse"),
+        ("Equivalent annual cost", "eac", "inverse"),
+        ("All-in monthly (yr 1)", "yr1_monthly_cost", "inverse"),
+    ]
+    cols = st.columns(len(metrics))
+    for col, (label, key, color) in zip(cols, metrics):
+        d = _delta_vs(cur_s[key], pin_s[key])
+        col.metric(
+            label,
+            _fmt_money(cur_s[key]),
+            delta=d and d.replace(" vs default", " vs A"),
+            delta_color=color,
+        )
+
+    st.markdown("**Changed inputs**")
+    rows = []
+    for specs in model.PARAM_GROUPS.values():
+        for attr, label, kind, *_ in specs:
+            a, b = getattr(pin_p, attr), getattr(cur_p, attr)
+            if a != b:
+                rows.append((label, _fmt_param(a, kind), _fmt_param(b, kind)))
+    if rows:
+        df = pd.DataFrame(rows, columns=["Parameter", "Pinned (A)", "Current (B)"])
+        st.dataframe(df, hide_index=True, width="stretch")
+    else:
+        st.caption("No inputs differ — the current scenario matches the pinned one.")
 
 
 _UNSET = object()

@@ -55,20 +55,63 @@ def _widget(attr, label, kind, step, lo, hi, help_txt, default):
     return float(st.number_input(label, **kwargs))
 
 
+def _seed_from_query_params() -> None:
+    """On first render, seed widget session_state from URL query params so a
+    shared/bookmarked scenario link reproduces its parameters. Only fills keys
+    not already set, so it never fights a user's live edits."""
+    qp = st.query_params
+    if not qp:
+        return
+    for specs in PARAM_GROUPS.values():
+        for attr, _label, kind, *_rest in specs:
+            key = f"param_{attr}"
+            if attr not in qp or key in st.session_state:
+                continue
+            try:
+                raw = float(qp[attr])
+            except (TypeError, ValueError):
+                continue
+            if kind == "pct":
+                st.session_state[key] = raw * 100.0  # widgets store % display value
+            elif kind == "int":
+                st.session_state[key] = int(raw)
+            else:
+                st.session_state[key] = raw
+
+
+def _sync_query_params(params: Params) -> None:
+    """Write the current parameters into the URL so the scenario is shareable."""
+    st.query_params.from_dict(
+        {
+            attr: f"{getattr(params, attr):.10g}"
+            for specs in PARAM_GROUPS.values()
+            for attr, *_ in specs
+        }
+    )
+
+
 def render_sidebar() -> Params:
     """Draw the full parameter form in the sidebar and return the Params."""
     defaults = Params()
+    _seed_from_query_params()
     with st.sidebar:
         st.header("Parameters")
         st.caption(
             "All inputs are editable. Defaults are illustrative "
             "(≈ a Cook County condo)."
         )
-        if st.button("↺ Reset to defaults", width="stretch"):
+        col_reset, col_pin = st.columns(2)
+        if col_reset.button("↺ Reset", width="stretch", help="Restore all defaults"):
             for group in PARAM_GROUPS.values():
                 for attr, *_ in group:
                     st.session_state.pop(f"param_{attr}", None)
+            st.query_params.clear()
             st.rerun()
+        pin_clicked = col_pin.button(
+            "📌 Pin as A",
+            width="stretch",
+            help="Pin the current scenario to compare against in the Compare tab.",
+        )
 
         values = {}
         for group_name, specs in PARAM_GROUPS.items():
@@ -85,4 +128,8 @@ def render_sidebar() -> Params:
                         getattr(defaults, attr),
                     )
 
-    return Params(**values)
+    params = Params(**values)
+    _sync_query_params(params)
+    if pin_clicked:
+        st.session_state["pinned_params"] = params
+    return params
