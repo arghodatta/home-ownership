@@ -55,11 +55,10 @@ class Params:
 
     # ---- Growth / macro ----
     home_appreciation_rate: float = 0.035  # nominal home price growth / yr
-    inflation_rate: float = 0.025  # grows HOA (and rent base if you tie them)
+    inflation_rate: float = 0.025  # grows HOA
     market_return: float = (
-        0.070  # opportunity cost of capital = discount rate (pre-tax)
+        0.040  # opportunity cost of capital = discount rate (pre-tax)
     )
-    rent_growth_rate: float = 0.030  # rent escalation / yr
 
     # ---- Taxes (deductions) ----
     marginal_income_tax_rate: float = (
@@ -167,18 +166,39 @@ def simulate(p: Params) -> dict:
         + mdf["pmi"]
         - mdf["tax_benefit"]
     )
-    # Monthly rent path
-    mdf["rent"] = p.monthly_rent * (1 + p.rent_growth_rate) ** (
+    # Monthly rent path — tracks the home's value (a stable rent yield) rather
+    # than a separate, slower escalator. Over long horizons this keeps rent and
+    # ownership cost linked, so a paid-off home stays cheap *relative to rent*
+    # instead of the two diverging unboundedly.
+    mdf["rent"] = p.monthly_rent * (1 + p.home_appreciation_rate) ** (
         (mdf["month"] - 1) // 12
     )
 
     # ---- Sale at horizon ----
     T = p.holding_period_years
+
+    # Sale price: the purchase price compounded at the annual appreciation rate
+    # for the whole holding period. (Equals the last month's home value, since
+    # months = T*12 and hv uses (1+appr)**(m/12).)
     sale_price = p.house_price * (1 + p.home_appreciation_rate) ** T
+
+    # Loan payoff: the mortgage balance still owed at the horizon, taken from the
+    # last row of the monthly amortization schedule (0 once the loan is paid off).
     rem_bal = mdf["balance"].iloc[-1]
+
+    # Selling costs: realtor commission + transfer taxes, as a % of the sale
+    # price (not the original price — they scale with what you actually sell for).
     sell_costs = sale_price * p.selling_cost_pct
+
+    # Home capital-gains tax: tax the appreciation (sale price - original price),
+    # but only the portion ABOVE the primary-residence exclusion, at the cap-gains
+    # rate. max(0, ...) means no tax when the gain fits under the exclusion.
     home_gain = sale_price - p.house_price
     home_cg_tax = max(0.0, home_gain - p.home_sale_exclusion) * p.cap_gains_tax_rate
+
+    # Net proceeds: cash in hand after selling — the sale price less the three
+    # things that come out of it (selling costs, remaining loan payoff, and the
+    # home cap-gains tax). This is the buyer's recovered equity at the horizon.
     net_proceeds = sale_price - sell_costs - rem_bal - home_cg_tax
 
     # ---- (A) NPV cost of ownership (discount at market_return) ----
@@ -482,15 +502,6 @@ PARAM_GROUPS = {
             0.3,
             "Opportunity cost of capital (pre-tax).",
         ),
-        (
-            "rent_growth_rate",
-            "Rent growth (%/yr)",
-            "pct",
-            0.005,
-            0.0,
-            0.2,
-            "Annual rent escalation.",
-        ),
     ],
     "Taxes": [
         (
@@ -575,7 +586,7 @@ PARAM_GROUPS = {
             "int",
             1,
             1,
-            40,
+            100,
             "How long you hold before selling.",
         ),
     ],
