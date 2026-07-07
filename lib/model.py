@@ -219,6 +219,15 @@ def simulate(p: Params) -> dict:
     )
     eac = npv * crf  # equivalent annual cost
 
+    # NPV cost of renting: PV of the rent path over the same horizon, discounted
+    # at the market return. Symmetric to owning, but with no down/closing to
+    # sink up front and no sale proceeds to recover at the end.
+    annual_rent = mdf.groupby("year")["rent"].sum()
+    npv_rent = 0.0
+    for y, out in annual_rent.items():
+        npv_rent += out / (1 + p.market_return) ** y
+    eac_rent = npv_rent * crf
+
     # ---- (B) Rent-vs-buy terminal wealth (symmetric, cap-gains-taxed) ----
     # Vectorized equivalent of the notebook's month-by-month compounding loop:
     # a surplus invested in month m compounds for (months - m + 1) monthly steps.
@@ -259,6 +268,8 @@ def simulate(p: Params) -> dict:
         net_proceeds=net_proceeds,
         npv_cost=npv,
         eac=eac,
+        npv_cost_rent=npv_rent,
+        eac_rent=eac_rent,
         buyer_nw=buyer_nw,
         renter_nw=renter_nw,
         buy_minus_rent=buy_minus_rent,
@@ -274,6 +285,8 @@ def summarize(res: dict) -> dict:
         avg_monthly_cost=m["owner_cost"].mean(),
         npv_cost=res["npv_cost"],
         eac=res["eac"],
+        npv_cost_rent=res["npv_cost_rent"],
+        eac_rent=res["eac_rent"],
         eac_pct_price=(res["eac"] / p.house_price if p.house_price else 0.0),
         sale_price=res["sale_price"],
         sell_costs=res["sell_costs"],

@@ -41,6 +41,7 @@ def main() -> None:
     p = inputs.render_sidebar()
     res = run(p)
     s = model.summarize(res)
+    base = model.summarize(run(Params()))  # cached default-scenario baseline
 
     st.title("🏠 Should I buy a home?")
     st.caption(
@@ -51,11 +52,11 @@ def main() -> None:
 
     results.verdict_banner(s)
     st.markdown("")
-    results.kpi_row(s)
+    results.kpi_row(s, base=base)
     st.divider()
 
-    tab_overview, tab_breakdown, tab_sensitivity = st.tabs(
-        ["Overview", "Cost breakdown", "Sensitivity & break-evens"]
+    tab_overview, tab_breakdown, tab_sensitivity, tab_compare = st.tabs(
+        ["Overview", "Cost breakdown", "Sensitivity & break-evens", "Compare (A/B)"]
     )
 
     with tab_overview:
@@ -63,13 +64,32 @@ def main() -> None:
         with left:
             st.plotly_chart(charts.cost_vs_equity(res), width="stretch")
         with right:
-            results.sale_bridge(s)
+            st.plotly_chart(charts.sale_bridge(s), width="stretch")
+            results.sale_table(s)
             results.networth_compare(s)
 
     with tab_breakdown:
         st.plotly_chart(charts.annual_cost_breakdown(res), width="stretch")
         st.markdown("**Annual cost detail**")
         results.annual_cost_table(res)
+        st.download_button(
+            "⬇ Download annual detail (CSV)",
+            data=model.annual_table(res).to_csv().encode("utf-8"),
+            file_name="home_ownership_annual_detail.csv",
+            mime="text/csv",
+        )
+
+    with tab_compare:
+        pinned = st.session_state.get("pinned_params")
+        if pinned is None:
+            st.info(
+                "No scenario pinned yet. Set your inputs, then click "
+                "**📌 Pin as A** in the sidebar. Change the inputs and this tab "
+                "will show the current scenario (B) against the pinned one (A)."
+            )
+        else:
+            pin_s = model.summarize(run(pinned))
+            results.scenario_compare(p, pinned, s, pin_s)
 
     with tab_sensitivity:
         ba, bh = breakeven_pair(p)

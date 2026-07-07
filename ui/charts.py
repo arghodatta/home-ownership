@@ -26,6 +26,7 @@ _COST_COMPONENTS = [
 
 def cost_vs_equity(res: dict) -> go.Figure:
     """Cumulative cash cost (incl. down + closing) vs home equity, by year."""
+    pal = theme.current()
     m = res["monthly"]
     g = m.groupby("year").agg(
         net_cost=("owner_cost", "sum"),
@@ -43,7 +44,7 @@ def cost_vs_equity(res: dict) -> go.Figure:
             y=cum_cost,
             name="Cumulative cash cost",
             mode="lines+markers",
-            line=dict(color=theme.SERIES[0], width=2),
+            line=dict(color=pal.series[0], width=2),
             marker=dict(size=8),
             hovertemplate="Year %{x}<br>Cost: $%{y:,.0f}<extra></extra>",
         )
@@ -54,7 +55,7 @@ def cost_vs_equity(res: dict) -> go.Figure:
             y=equity,
             name="Home equity",
             mode="lines+markers",
-            line=dict(color=theme.SERIES[1], width=2),
+            line=dict(color=pal.series[1], width=2),
             marker=dict(size=8, symbol="square"),
             hovertemplate="Year %{x}<br>Equity: $%{y:,.0f}<extra></extra>",
         )
@@ -63,11 +64,58 @@ def cost_vs_equity(res: dict) -> go.Figure:
         fig,
         title="Cumulative cost vs equity built",
         hovermode="x unified",
-        xaxis=dict(
-            title="Year", gridcolor=theme.GRID, linecolor=theme.BASELINE, dtick=1
-        ),
+        xaxis=dict(title="Year", gridcolor=pal.grid, linecolor=pal.baseline, dtick=1),
         yaxis=dict(
-            title="", gridcolor=theme.GRID, linecolor=theme.BASELINE, tickformat="$,.0s"
+            title="", gridcolor=pal.grid, linecolor=pal.baseline, tickformat="$,.0s"
+        ),
+    )
+    return fig
+
+
+def sale_bridge(s: dict) -> go.Figure:
+    """Waterfall from sale price down to net proceeds at the horizon."""
+    pal = theme.current()
+    fig = go.Figure(
+        go.Waterfall(
+            orientation="v",
+            measure=["absolute", "relative", "relative", "relative", "total"],
+            x=[
+                "Sale price",
+                "Selling costs",
+                "Loan payoff",
+                "Cap gains tax",
+                "Net proceeds",
+            ],
+            y=[
+                s["sale_price"],
+                -s["sell_costs"],
+                -s["rem_bal"],
+                -s["home_cg_tax"],
+                None,  # total — computed by Plotly
+            ],
+            text=[
+                f"${s['sale_price']:,.0f}",
+                f"-${s['sell_costs']:,.0f}",
+                f"-${s['rem_bal']:,.0f}",
+                f"-${s['home_cg_tax']:,.0f}",
+                f"${s['net_proceeds']:,.0f}",
+            ],
+            textposition="outside",
+            connector=dict(line=dict(color=pal.baseline, width=1)),
+            increasing=dict(marker=dict(color=pal.series[1])),  # aqua/green
+            decreasing=dict(marker=dict(color=pal.series[5])),  # red
+            totals=dict(marker=dict(color=pal.series[0])),  # blue
+            hovertemplate="%{x}<br>$%{y:,.0f}<extra></extra>",
+        )
+    )
+    theme.apply(
+        fig,
+        title="Sale at horizon → net proceeds",
+        showlegend=False,
+        margin=dict(l=48, r=24, t=56, b=40),
+        xaxis=dict(gridcolor=pal.grid, linecolor=pal.baseline),
+        yaxis=dict(
+            title="", gridcolor=pal.grid, linecolor=pal.baseline, tickformat="$,.0s"
         ),
     )
     return fig
@@ -75,6 +123,7 @@ def cost_vs_equity(res: dict) -> go.Figure:
 
 def annual_cost_breakdown(res: dict) -> go.Figure:
     """Stacked bar of annual gross cost components."""
+    pal = theme.current()
     m = res["monthly"]
     comp = m.groupby("year").agg(**{k: (k, "sum") for k, _ in _COST_COMPONENTS})
     years = comp.index
@@ -86,9 +135,7 @@ def annual_cost_breakdown(res: dict) -> go.Figure:
                 x=years,
                 y=comp[col],
                 name=label,
-                marker=dict(
-                    color=theme.SERIES[i], line=dict(color=theme.SURFACE, width=2)
-                ),
+                marker=dict(color=pal.series[i], line=dict(color=pal.surface, width=2)),
                 hovertemplate=f"{label}<br>Year %{{x}}: $%{{y:,.0f}}<extra></extra>",
             )
         )
@@ -97,11 +144,9 @@ def annual_cost_breakdown(res: dict) -> go.Figure:
         title="Annual gross cost breakdown",
         barmode="stack",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
-        xaxis=dict(
-            title="Year", gridcolor=theme.GRID, linecolor=theme.BASELINE, dtick=1
-        ),
+        xaxis=dict(title="Year", gridcolor=pal.grid, linecolor=pal.baseline, dtick=1),
         yaxis=dict(
-            title="", gridcolor=theme.GRID, linecolor=theme.BASELINE, tickformat="$,.0s"
+            title="", gridcolor=pal.grid, linecolor=pal.baseline, tickformat="$,.0s"
         ),
     )
     return fig
@@ -113,6 +158,7 @@ def sensitivity_heatmap(p: model.Params, grid=None) -> go.Figure:
     ``grid`` may be a precomputed ``(appr_grid, hold_grid, Z)`` tuple (so the
     caller can cache the expensive sweep); otherwise it is computed here.
     """
+    pal = theme.current()
     appr_grid, hold_grid, Z = grid if grid is not None else model.sensitivity_grid(p)
     lim = float(np.abs(Z).max()) or 1.0
     y_labels = [f"{a:.0%}" for a in appr_grid]
@@ -122,7 +168,7 @@ def sensitivity_heatmap(p: model.Params, grid=None) -> go.Figure:
             z=Z,
             x=hold_grid,
             y=y_labels,
-            colorscale=theme.DIVERGING,
+            colorscale=pal.diverging,
             zmid=0,
             zmin=-lim,
             zmax=lim,
@@ -144,7 +190,7 @@ def sensitivity_heatmap(p: model.Params, grid=None) -> go.Figure:
                 for j in range(len(hold_grid))
                 for i in range(len(appr_grid))
             ],
-            textfont=dict(size=9, color=theme.TEXT_PRIMARY),
+            textfont=dict(size=9, color=pal.text_primary),
             hoverinfo="skip",
             showlegend=False,
         )
@@ -157,10 +203,10 @@ def sensitivity_heatmap(p: model.Params, grid=None) -> go.Figure:
             title="Holding period (years)",
             dtick=1,
             showgrid=False,
-            linecolor=theme.BASELINE,
+            linecolor=pal.baseline,
         ),
         yaxis=dict(
-            title="Home appreciation / yr", showgrid=False, linecolor=theme.BASELINE
+            title="Home appreciation / yr", showgrid=False, linecolor=pal.baseline
         ),
     )
     return fig
@@ -168,6 +214,7 @@ def sensitivity_heatmap(p: model.Params, grid=None) -> go.Figure:
 
 def tornado(p: model.Params) -> go.Figure:
     """Horizontal tornado: change in NPV cost of owning vs base, per +/- shock."""
+    pal = theme.current()
     t = model.tornado(p)
     lo = t["low_shock"].to_numpy()
     hi = t["high_shock"].to_numpy()
@@ -180,20 +227,20 @@ def tornado(p: model.Params) -> go.Figure:
             x=width,
             base=left,
             orientation="h",
-            marker=dict(color=theme.SERIES[0], line=dict(color=theme.SURFACE, width=1)),
+            marker=dict(color=pal.series[0], line=dict(color=pal.surface, width=1)),
             hovertemplate="%{y}<br>NPV swing: $%{x:,.0f}<extra></extra>",
         )
     )
-    fig.add_vline(x=0, line=dict(color=theme.TEXT_PRIMARY, width=1))
+    fig.add_vline(x=0, line=dict(color=pal.text_primary, width=1))
     theme.apply(
         fig,
         title="Tornado: change in NPV cost of owning (vs base)",
         xaxis=dict(
             title="Δ NPV cost",
-            gridcolor=theme.GRID,
-            linecolor=theme.BASELINE,
+            gridcolor=pal.grid,
+            linecolor=pal.baseline,
             tickformat="$,.0s",
         ),
-        yaxis=dict(title="", gridcolor=theme.GRID, linecolor=theme.BASELINE),
+        yaxis=dict(title="", gridcolor=pal.grid, linecolor=pal.baseline),
     )
     return fig

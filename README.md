@@ -19,10 +19,22 @@ Requires [uv](https://docs.astral.sh/uv/) (Python 3.12+).
 uv run streamlit run app.py
 ```
 
-Then open the URL it prints (default <http://localhost:8501>).
+The app is served under a friendly local hostname, **<http://home-tco.local:8502>**
+(configured via `browser.serverAddress` in `.streamlit/config.toml`). For your
+machine to resolve that name, add it to your hosts file once:
+
+```bash
+# Linux/macOS (needs sudo):
+echo '127.0.0.1 home-tco.local' | sudo tee -a /etc/hosts
+# Windows: add the same line to C:\Windows\System32\drivers\etc\hosts (as admin)
+```
+
+After that, `uv run streamlit run app.py` prints and opens
+<http://home-tco.local:8502>. (Skip the hosts entry and it still works at
+<http://localhost:8502>.)
 
 To let others **on the same network** reach it, share your machine's LAN
-address instead — e.g. `http://192.168.x.x:8501`. The server binds to all
+address instead — e.g. `http://192.168.x.x:8502`. The server binds to all
 interfaces by default (see `.streamlit/config.toml`).
 
 ## Deploy (public, free)
