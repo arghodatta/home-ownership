@@ -120,7 +120,11 @@ def simulate(p: Params) -> dict:
         ins_m = p.insurance_rate * hv / 12.0
         maint_m = p.maintenance_rate * hv / 12.0
         hoa_m = p.hoa_monthly * (1 + p.inflation_rate) ** year
-        pmi_m = (p.pmi_rate * loan0 / 12.0) if (balance / p.house_price) > 0.80 else 0.0
+        pmi_m = (
+            (p.pmi_rate * loan0 / 12.0)
+            if p.house_price > 0 and (balance / p.house_price) > 0.80
+            else 0.0
+        )
 
         recs.append(
             dict(
@@ -270,7 +274,7 @@ def summarize(res: dict) -> dict:
         avg_monthly_cost=m["owner_cost"].mean(),
         npv_cost=res["npv_cost"],
         eac=res["eac"],
-        eac_pct_price=res["eac"] / p.house_price,
+        eac_pct_price=(res["eac"] / p.house_price if p.house_price else 0.0),
         sale_price=res["sale_price"],
         sell_costs=res["sell_costs"],
         rem_bal=res["rem_bal"],
@@ -384,7 +388,7 @@ PARAM_GROUPS = {
             "House price ($)",
             "dollar",
             10_000,
-            0,
+            10_000,
             None,
             "Purchase price of the home.",
         ),
