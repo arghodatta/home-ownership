@@ -19,3 +19,14 @@ dev = [
     "jupyterlab>=4.6.1",
     "pytest>=9.1.1",
 ]
+
+[tool.isort]
+# Keep isort's output byte-for-byte compatible with black so the two
+# formatters in the dev workflow never fight over the same import block.
+profile = "black"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Put the repo root on sys.path so `from lib import model` resolves without an
+# editable install — `uv run pytest` then works straight from a fresh checkout.
+pythonpath = ["."]
