@@ -1,0 +1,21 @@
+# Streamlit server configuration.
+#
+# These defaults suit both local runs and hosted deployment (Streamlit
+# Community Cloud, or a container). Community Cloud manages the port/address
+# itself; the settings here mainly matter when you run the container or serve
+# it yourself.
+
+[server]
+# Bind on all interfaces so the app is reachable from other machines
+# (e.g. over the LAN, or from a container's published port).
+address = "0.0.0.0"
+port = 8501
+# No interactive prompts / usage-stats email when starting headless.
+headless = true
+
+[browser]
+# Don't collect usage statistics.
+gatherUsageStats = false
+
+[theme]
+base = "light"
