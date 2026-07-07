@@ -9,7 +9,7 @@
 # Bind on all interfaces so the app is reachable from other machines
 # (e.g. over the LAN, or from a container's published port).
 address = "0.0.0.0"
-port = 8502
+port = 8501
 # No interactive prompts / usage-stats email when starting headless.
 headless = true
 
@@ -19,10 +19,5 @@ headless = true
 base = "light"
 
 [browser]
-# Advertise a friendly local hostname instead of "localhost". Streamlit prints
-# this (and opens it) as the app URL, so you get http://home-tco.local:8502.
-# Requires a matching hosts-file entry pointing home-tco.local at 127.0.0.1
-# (see README "Run locally"); the server itself still binds 0.0.0.0:8502.
-serverAddress = "home-tco.local"
 # Don't collect usage statistics.
 gatherUsageStats = false
