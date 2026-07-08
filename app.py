@@ -45,9 +45,11 @@ def main() -> None:
 
     st.title("🏠 Should I buy a home?")
     st.caption(
-        "A rent-vs-buy / total-cost-of-ownership model with opportunity cost, "
-        "leverage, tax shields, and symmetric cap-gains treatment. "
-        "Adjust the parameters in the sidebar; everything updates live."
+        "Compares buying a home with renting the same place and investing the "
+        "difference — weighing the investment growth you give up on your down "
+        "payment, the boost (and risk) a mortgage's leverage adds, the tax breaks "
+        "of owning, and the taxes you pay when you sell. Adjust the numbers in the "
+        "sidebar; everything updates live."
     )
 
     results.methodology()
@@ -102,10 +104,15 @@ def main() -> None:
 
     st.divider()
     st.caption(
-        "Defaults are illustrative and not financial advice. Insurance and "
-        "maintenance scale with home value; property tax follows the assessment "
-        "basis you choose; HOA and rent grow at their own rates; the tax shield "
-        "uses itemized-vs-standard with the $750k mortgage-interest and SALT caps."
+        "The starting numbers are just an example, not financial advice. Buying is "
+        "a leveraged bet and money in a home is hard to get at — the single answer "
+        "on screen understates both risks; see “How this simulation works” for why. "
+        "Future dollars are marked down to today's value using the discount rate "
+        "(default ≈ 4.3%, a safe long-term rate from the 30-year swap curve — one "
+        "rate, not the full curve), while invested money grows at the 7% market "
+        "return. Insurance and upkeep rise with the home's value; property tax "
+        "follows the option you pick; HOA and rent rise at their own rates; the tax "
+        "break follows the standard IRS deduction rules and limits."
     )
 
 

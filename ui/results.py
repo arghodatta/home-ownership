@@ -36,11 +36,10 @@ The simulation walks forward one month at a time and records:
   away at the loan).
 - **Insurance and maintenance** are charged as a % of the home's *current*
   value, so they rise as the home appreciates.
-- **Property tax** is a % of the *assessed* value, which you can base on the
-  home's current market value, freeze at the purchase price (California
-  Prop-13 style), grow off the purchase price at the reassessment cap of
-  max(2%, inflation) per year, or grow it at min(5%, inflation) per year
-  (Illinois PTELL extension-limitation cap).
+- **Property tax** is a % of the home's taxable ("assessed") value. You choose how
+  that value is set: it can track the home's current market value, freeze at the
+  price you paid (like California), or rise each year but capped — up to
+  max(2%, inflation) (California) or min(5%, inflation) (Illinois).
 - **HOA dues** start at your input and grow with inflation each year.
 - **PMI** (mortgage insurance) is charged only while you owe more than 80% of the
   home's original price, then automatically drops off.
@@ -48,10 +47,10 @@ The simulation walks forward one month at a time and records:
 #### 3. The tax break from owning
 Each year the model checks whether your **mortgage interest + property tax** (plus
 any other itemized deductions) beat the **standard deduction**. Only the amount
-*above* the standard deduction actually saves you tax, at your marginal rate. It
-also respects the real-world caps: interest is deductible on only the first
-$750k of the loan, and property tax counts only up to your remaining SALT room.
-This saving is subtracted from your costs — it's the **tax shield**.
+*above* the standard deduction actually saves you tax, at your top tax rate. It
+also respects the real-world limits: interest counts on only the first $750k of
+the loan, and property tax counts only up to the $10k state-and-local-tax cap.
+This saving is subtracted from your costs — it's the **tax break from owning**.
 
 #### 4. Your all-in monthly cost
 For each month: mortgage payment + property tax + insurance + maintenance + HOA +
@@ -60,37 +59,63 @@ PMI − tax shield. That's the real out-of-pocket cost of owning.
 #### 5. Selling at the end
 When the holding period ends, the home is "sold":
 - **Sale price** = purchase price grown at the appreciation rate.
-- Subtract **selling costs** (agent commission + transfer taxes), the **remaining
-  loan balance**, and any **capital-gains tax** on the profit above the
-  primary-residence exclusion.
+- Subtract **selling costs** (agent commission + transfer taxes), whatever's left
+  on the **mortgage**, and any **tax on the profit** above the tax-free amount you
+  get on a main home.
 - What's left is your **net proceeds** — the cash you actually walk away with.
 
 #### 6. The two headline answers
-- **Cost of owning** — every cost above is added up and pulled back into *today's
-  dollars* (future dollars count for a little less, because money kept today could
-  be invested). Subtracting the net sale proceeds gives the **NPV cost of owning**,
-  and spreading that over the years gives the **equivalent annual cost**.
-- **Buy vs. rent** — this is the fair fight. Each month, whoever's housing is
-  cheaper **invests the difference** in the market; the renter also invests the
-  down payment and closing costs the buyer sank into the home. Both portfolios are
-  taxed on their gains. At the end, the buyer's wealth (savings **+** home equity)
-  is compared with the renter's wealth. Whoever has more **wins**.
+- **Cost of owning** — future dollars are worth a little less than dollars today
+  (money kept now could be earning interest), so we shrink each future cost back to
+  today's value using the **discount rate** (default ≈ 4.3%, a safe long-term
+  interest rate from the 30-year swap curve — a single rate, not the whole curve).
+  Add it all up, subtract what you get back when you sell, and you have the total
+  **cost of owning in today's dollars**. Spreading that evenly across the years
+  gives a **yearly price tag** for owning.
+- **Buy vs. rent** — the fair fight. Each month, whoever's housing is cheaper
+  **invests the difference** at the **market return** (default 7%, about what a
+  typical stock-and-bond mix earns); the renter also invests the down payment and
+  closing costs the buyer put into the home. Both investment pots are taxed on
+  their gains. At the end, the buyer's wealth (savings **plus** home equity) is
+  compared with the renter's. Whoever has more **wins**. The two rates differ on
+  purpose: money you're fairly sure to spend is valued with the lower, safer rate,
+  while money that's invested and at risk grows at the higher one.
 
-#### A few things to keep in mind
-- Rent escalates at its own **rent-growth rate**, set independently of home-price
-  appreciation — historically rents track incomes/inflation, which can diverge
-  from home prices over a holding period.
+#### A few things to keep in mind — please read these
+- **Buying is a leveraged bet, and this tool shows only the middle of the road.**
+  With 20% down you control a home worth **5× your cash**, so price moves are
+  magnified about 5× on the money you put in: a 10% rise in the home's price is
+  roughly a **50% gain** on your down payment, and a 10% *fall* is roughly a
+  **50% loss**.
+  The model walks a single smooth path of assumed rates, so it shows the *expected*
+  outcome and hides this amplified, two-sided risk. Treat the verdict as a central
+  estimate, not a promise, and lean on the **Sensitivity** tab to see how hard it
+  swings.
+- **A dollar of home equity is not a dollar in the bank.** The final comparison
+  adds home equity and savings together one-for-one, but they aren't equally useful
+  money. You can't spend part of your house — getting at that money means borrowing
+  against it or selling, and a sale takes months and costs ~6–8%. It's also a single
+  asset tied to one city and one building, not a spread-out nest egg. Cash you can
+  actually reach and move around is worth *more* per dollar (economists call this a
+  "liquidity premium"). So even when the buyer's total edges ahead, the renter's
+  more flexible money may be worth as much or more in practice.
+- **Rent is all-in.** Enter a monthly rent that bundles *every* cost of renting —
+  renter's insurance, deposits, broker fees, and moving costs — since the model
+  treats it as the renter's total housing outlay. It escalates at its own
+  **rent-growth rate**, independent of home-price appreciation.
 - **Every rate is assumed to hold constant for the whole horizon** — appreciation,
-  inflation, the mortgage rate, market return, tax rates, and the property-tax
-  escalators never change year to year. Reality is bumpier: rates move, markets
-  have good and bad stretches, and tax law shifts. Treat the output as a smooth
-  central estimate, not a forecast, and lean on the **Sensitivity** tab to see how
-  much the verdict swings when the key assumptions are wrong.
-- The comparison is deliberately **symmetric** — same starting cash, same market
-  return, same capital-gains treatment on both sides — so it isn't rigged for
-  either choice.
-- Every number is only as good as the assumptions in the sidebar. Try nudging the
-  appreciation rate, holding period, or rent to see how sensitive the verdict is.
+  inflation, the mortgage rate, market return, the discount rate, tax rates, and
+  the property-tax escalators never change year to year. Reality is bumpier: rates
+  move, markets have good and bad stretches, and tax law shifts. Treat the output
+  as a smooth central estimate, not a forecast, and lean on the **Sensitivity** tab
+  to see how much the verdict swings when the key assumptions are wrong.
+- The comparison is deliberately **even-handed** and assumes people **use money
+  sensibly** — same starting cash, same investment return, same taxes on gains, and
+  a renter who really does invest every dollar they save each month rather than
+  spending it — so it isn't tilted toward either choice.
+- The tool is built for a **2–15 year primary-residence hold**; it deliberately
+  skips short-flip and edge-case tax mechanics. Every number is only as good as the
+  assumptions in the sidebar.
 """)
 
 
@@ -100,14 +125,16 @@ def verdict_banner(s: dict) -> None:
     if s["buying_wins"]:
         st.success(
             f"### 🏠 Buying wins by {_fmt_money(delta)}\n"
-            f"Over the holding period, the buyer's terminal net worth exceeds the "
-            f"renter's by **{_fmt_money(delta)}** (cap-gains-taxed, symmetric)."
+            f"By the end, the buyer is about **{_fmt_money(delta)}** richer than "
+            f"someone who rents the same home and invests the difference — after "
+            f"taxes, comparing both fairly."
         )
     else:
         st.warning(
             f"### 🔑 Renting wins by {_fmt_money(-delta)}\n"
-            f"Over the holding period, renting and investing the difference leaves "
-            f"you **{_fmt_money(-delta)}** ahead of buying (cap-gains-taxed, symmetric)."
+            f"By the end, renting the same home and investing the difference leaves "
+            f"you about **{_fmt_money(-delta)}** richer than buying — after taxes, "
+            f"comparing both fairly."
         )
 
 
@@ -138,7 +165,7 @@ def kpi_row(s: dict, base: dict | None = None) -> None:
         ),
     )
     c2.metric(
-        "NPV cost of owning",
+        "Total cost of owning (today's $)",
         _fmt_money(s["npv_cost"]),
         delta=_delta_vs(s["npv_cost"], base and base["npv_cost"]),
         delta_color="inverse",
@@ -150,7 +177,7 @@ def kpi_row(s: dict, base: dict | None = None) -> None:
         ),
     )
     c3.metric(
-        "Equivalent annual cost",
+        "Yearly cost of owning",
         _fmt_money(s["eac"]),
         delta=_delta_vs(s["eac"], base and base["eac"]),
         delta_color="inverse",
@@ -163,7 +190,7 @@ def kpi_row(s: dict, base: dict | None = None) -> None:
         ),
     )
     c4.metric(
-        "Buy − Rent (terminal)",
+        "Buy vs. rent (final wealth)",
         _fmt_money(s["buy_minus_rent"]),
         delta=("Buying wins" if s["buying_wins"] else "Renting wins"),
         delta_color=("normal" if s["buying_wins"] else "inverse"),
@@ -268,21 +295,21 @@ def scenario_compare(cur_p, pin_p, cur_s, pin_s) -> None:
     st.markdown("**Outcomes — current (B) vs pinned (A)**")
     metrics = [
         (
-            "Buy − Rent (terminal)",
+            "Buy vs. rent (final wealth)",
             "buy_minus_rent",
             "normal",
-            "How much richer buying leaves you versus renting-and-investing by the "
-            "end. Positive = buying wins.",
+            "How much richer buying leaves you versus renting and investing the "
+            "difference by the end. Positive = buying wins.",
         ),
         (
-            "NPV cost of owning",
+            "Total cost of owning (today's $)",
             "npv_cost",
             "inverse",
             "Total lifetime cost of owning as a single lump sum in today's dollars. "
             "Lower is better.",
         ),
         (
-            "Equivalent annual cost",
+            "Yearly cost of owning",
             "eac",
             "inverse",
             "That lifetime cost spread into a level yearly amount — the 'true' yearly "

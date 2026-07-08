@@ -55,8 +55,9 @@ class Params:
     # ---- Growth / macro ----
     home_appreciation_rate: float = 0.035  # nominal home price growth / yr
     inflation_rate: float = 0.025  # grows HOA
-    market_return: float = (
-        0.040  # opportunity cost of capital = discount rate (pre-tax)
+    market_return: float = 0.07  # equity/portfolio return (opportunity cost of capital)
+    discount_rate: float = (
+        0.043  # NPV discount rate; default ≈ 30Y zero rate (swap curve)
     )
 
     # ---- Taxes (deductions) ----
@@ -243,30 +244,35 @@ def simulate(p: Params) -> dict:
     # home cap-gains tax). This is the buyer's recovered equity at the horizon.
     net_proceeds = sale_price - sell_costs - rem_bal - home_cg_tax
 
-    # ---- (A) NPV cost of ownership (discount at market_return) ----
+    # ---- (A) NPV cost of ownership (discount at the discount_rate) ----
+    # These are fairly certain, debt-like housing cash flows, so they are
+    # discounted at the (safer) discount rate — NOT the risky equity return used
+    # for the invested portfolios in section (B).
     annual_out = mdf.groupby("year")["owner_cost"].sum()
     npv = down + closing
     for y, out in annual_out.items():
-        npv += out / (1 + p.market_return) ** y
-    npv -= net_proceeds / (1 + p.market_return) ** T
+        npv += out / (1 + p.discount_rate) ** y
+    npv -= net_proceeds / (1 + p.discount_rate) ** T
     crf = (
-        (p.market_return * (1 + p.market_return) ** T)
-        / ((1 + p.market_return) ** T - 1)
-        if p.market_return > 0
+        (p.discount_rate * (1 + p.discount_rate) ** T)
+        / ((1 + p.discount_rate) ** T - 1)
+        if p.discount_rate > 0
         else 1.0 / T
     )
     eac = npv * crf  # equivalent annual cost
 
     # NPV cost of renting: PV of the rent path over the same horizon, discounted
-    # at the market return. Symmetric to owning, but with no down/closing to
+    # at the same discount rate. Symmetric to owning, but with no down/closing to
     # sink up front and no sale proceeds to recover at the end.
     annual_rent = mdf.groupby("year")["rent"].sum()
     npv_rent = 0.0
     for y, out in annual_rent.items():
-        npv_rent += out / (1 + p.market_return) ** y
+        npv_rent += out / (1 + p.discount_rate) ** y
     eac_rent = npv_rent * crf
 
     # ---- (B) Rent-vs-buy terminal wealth (symmetric, cap-gains-taxed) ----
+    # Invested surpluses compound at the risky equity return (market_return), not
+    # the discount rate — this is the opportunity cost of capital actually earned.
     # Vectorized equivalent of the notebook's month-by-month compounding loop:
     # a surplus invested in month m compounds for (months - m + 1) monthly steps.
     mret_m = (1 + p.market_return) ** (1 / 12.0) - 1
@@ -375,8 +381,12 @@ def breakeven_appreciation(p: Params):
 
 
 def breakeven_hold(p: Params):
-    """Smallest whole-year holding period where buying wins, else None."""
-    for h in range(1, p.loan_term_years + 1):
+    """Smallest whole-year holding period (>= 2) where buying wins, else None.
+
+    Starts at 2 years: below that the primary-residence cap-gains exclusion and
+    long-term rate don't apply, so those holds are out of the model's scope.
+    """
+    for h in range(2, p.loan_term_years + 1):
         if simulate(replace(p, holding_period_years=h))["buy_minus_rent"] > 0:
             return h
     return None
@@ -409,7 +419,7 @@ def tornado(p: Params) -> pd.DataFrame:
             p.home_appreciation_rate,
             0.01,
         ),
-        "market_return": ("market_return", p.market_return, 0.01),
+        "discount_rate": ("discount_rate", p.discount_rate, 0.01),
         "property_tax_rate": ("property_tax_rate", p.property_tax_rate, 0.005),
         "maintenance_rate": ("maintenance_rate", p.maintenance_rate, 0.005),
         "hoa_monthly": ("hoa_monthly", p.hoa_monthly, 200),
@@ -417,7 +427,10 @@ def tornado(p: Params) -> pd.DataFrame:
     }
     rows = []
     for name, (attr, val, d) in shocks.items():
-        lo = simulate(replace(p, **{attr: type(val)(val - d)}))["npv_cost"]
+        lo_val = val - d
+        if attr == "holding_period_years":
+            lo_val = max(2, lo_val)  # respect the 2-year minimum hold
+        lo = simulate(replace(p, **{attr: type(val)(lo_val)}))["npv_cost"]
         hi = simulate(replace(p, **{attr: type(val)(val + d)}))["npv_cost"]
         rows.append((name, lo - base, hi - base, abs(hi - lo)))
     return (
@@ -450,7 +463,8 @@ PARAM_GROUPS = {
             0.01,
             0.0,
             1.0,
-            "20% or more avoids PMI.",
+            "20% or more lets you skip PMI — the extra insurance lenders charge "
+            "when you put down less than 20%.",
         ),
         (
             "closing_cost_pct",
@@ -470,7 +484,8 @@ PARAM_GROUPS = {
             0.00125,
             0.0,
             0.2,
-            "Annual nominal mortgage APR.",
+            "Your mortgage's yearly interest rate. Default 6.75% ≈ roughly "
+            "today's 30-year rate.",
         ),
         (
             "loan_term_years",
@@ -479,7 +494,7 @@ PARAM_GROUPS = {
             1,
             1,
             40,
-            "Amortization term, e.g. 15 or 30.",
+            "How many years to pay off the loan, e.g. 15 or 30.",
         ),
     ],
     "Recurring carry": [
@@ -490,22 +505,27 @@ PARAM_GROUPS = {
             0.001,
             0.0,
             0.1,
-            "Effective annual property tax rate, applied to the assessed value.",
+            'Yearly property tax as a % of the taxable ("assessed") value of '
+            "the home.",
         ),
         (
             "property_tax_basis",
             "Property tax assessed on",
             "choice",
             (
-                ("market", "Current market value"),
-                ("purchase", "Purchase price (CA Prop-13, frozen)"),
-                ("capped", "Purchase price + max(2%, inflation)/yr"),
-                ("ptell", "Purchase price + min(5%, inflation)/yr (IL PTELL)"),
+                ("market", "Current market value (rises with the home)"),
+                ("purchase", "Frozen at the price you paid (California-style)"),
+                ("capped", "Price you paid, rising up to max(2%, inflation)/yr"),
+                (
+                    "ptell",
+                    "Price you paid, rising up to min(5%, inflation)/yr (Illinois)",
+                ),
             ),
             None,
             None,
-            "What the tax is levied on: the home's current value, the frozen "
-            "purchase price, or the purchase price grown at the reassessment cap.",
+            "What your property tax is figured on: the home's current value, the "
+            "price you paid (frozen), or the price you paid rising by a capped "
+            "amount each year (the California and Illinois rules).",
         ),
         (
             "hoa_monthly",
@@ -541,7 +561,8 @@ PARAM_GROUPS = {
             0.001,
             0.0,
             0.03,
-            "Charged while LTV > 80% of original price.",
+            "Extra insurance you pay while you still owe more than 80% of the "
+            "home's original price.",
         ),
     ],
     "Growth / macro": [
@@ -552,7 +573,8 @@ PARAM_GROUPS = {
             0.005,
             -0.1,
             0.3,
-            "Nominal annual home price growth.",
+            "How fast you expect the home's price to rise each year. Default "
+            "3.5% ≈ a long-run average.",
         ),
         (
             "inflation_rate",
@@ -561,16 +583,30 @@ PARAM_GROUPS = {
             0.005,
             0.0,
             0.2,
-            "Escalates HOA.",
+            "General inflation; nudges up HOA dues over time.",
         ),
         (
             "market_return",
-            "Market return / discount rate (%/yr)",
+            "Market return (equity, %/yr)",
             "pct",
             0.005,
             0.0,
             0.3,
-            "Opportunity cost of capital (pre-tax).",
+            "What your money could earn if you invested it instead — the return "
+            "you give up by tying cash up in a home. Default 7%, about what a "
+            "typical stock-and-bond mix has returned.",
+        ),
+        (
+            "discount_rate",
+            "Discount rate (%/yr)",
+            "pct",
+            0.005,
+            0.0,
+            0.3,
+            "How much future dollars are marked down when we compare them with "
+            "money today (a dollar next year is worth a little less than a dollar "
+            "now). Default 4.3% — a safe long-term interest rate from the 30-year "
+            "swap curve. It's a single rate, not the whole curve.",
         ),
     ],
     "Taxes": [
@@ -581,7 +617,8 @@ PARAM_GROUPS = {
             0.01,
             0.0,
             0.6,
-            "Fed+state marginal rate for itemized deductions.",
+            "Your top combined federal + state income tax rate — used to value "
+            "the deductions from owning.",
         ),
         (
             "salt_headroom",
@@ -590,7 +627,8 @@ PARAM_GROUPS = {
             500,
             0,
             None,
-            "$ of SALT cap left for property tax (0 if income tax exhausts it).",
+            "How much of the $10k state-and-local-tax deduction cap is left for "
+            "property tax (0 if your income/sales taxes already use it up).",
         ),
         (
             "mortgage_deduction_principal_cap",
@@ -599,7 +637,7 @@ PARAM_GROUPS = {
             50_000,
             0,
             None,
-            "Interest deductible only on first $750k of debt.",
+            "Mortgage interest is only deductible on the first $750k you borrow.",
         ),
         (
             "other_itemized_deductions",
@@ -617,7 +655,8 @@ PARAM_GROUPS = {
             500,
             0,
             None,
-            "Only deductions above this have value (MFJ).",
+            "The flat deduction everyone can take. Only deductions above this "
+            "amount actually save you extra tax (shown for a married couple).",
         ),
         (
             "cap_gains_tax_rate",
@@ -626,7 +665,7 @@ PARAM_GROUPS = {
             0.005,
             0.0,
             0.5,
-            "LTCG + NIIT on investments & home sale.",
+            "Tax rate on profits from investments and from selling the home.",
         ),
         (
             "home_sale_exclusion",
@@ -635,7 +674,8 @@ PARAM_GROUPS = {
             50_000,
             0,
             None,
-            "Primary-residence gain exclusion ($500k MFJ).",
+            "Profit on your main home that's tax-free when you sell — $500k for "
+            "a married couple, $250k single.",
         ),
     ],
     "Sale / exit": [
@@ -655,9 +695,12 @@ PARAM_GROUPS = {
             "Holding period (years)",
             "int",
             1,
-            1,
+            2,
             100,
-            "How long you hold before selling.",
+            "How long you hold before selling. Minimum 2 years — the primary-"
+            "residence capital-gains exclusion requires living in the home at "
+            "least 2 of the last 5 years, and gains held under a year are taxed "
+            "as ordinary income.",
         ),
     ],
     "Rent counterfactual": [
@@ -668,7 +711,9 @@ PARAM_GROUPS = {
             100,
             0,
             None,
-            "Rent for the equivalent home you would otherwise rent.",
+            "All-in monthly cost of renting the equivalent home — include "
+            "renter's insurance, deposits, broker fees, and moving costs, since "
+            "the model treats this as the renter's total housing outlay.",
         ),
         (
             "rent_growth_rate",
@@ -677,7 +722,7 @@ PARAM_GROUPS = {
             0.005,
             -0.05,
             0.3,
-            "Annual rent escalation, independent of home-price appreciation.",
+            "How fast rent rises each year — set separately from home prices.",
         ),
     ],
 }

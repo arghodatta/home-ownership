@@ -154,6 +154,33 @@ def test_home_cap_gains_respects_exclusion(p):
 
 
 # --------------------------------------------------------------------------
+# Discount rate vs equity return (separated)
+# --------------------------------------------------------------------------
+def test_npv_cost_uses_discount_rate_not_market_return(p):
+    """The NPV cost of owning depends on the discount rate, not the equity return."""
+    base = model.simulate(p)["npv_cost"]
+    # Changing the equity/portfolio return must not move the cost NPV...
+    same = model.simulate(replace(p, market_return=p.market_return + 0.03))["npv_cost"]
+    assert same == pytest.approx(base)
+    # ...but changing the discount rate must.
+    moved = model.simulate(replace(p, discount_rate=p.discount_rate + 0.02))["npv_cost"]
+    assert moved != pytest.approx(base)
+
+
+def test_buy_vs_rent_uses_market_return_not_discount_rate(p):
+    """Terminal buy-vs-rent wealth depends on the equity return, not the discount rate."""
+    base = model.simulate(p)["buy_minus_rent"]
+    same = model.simulate(replace(p, discount_rate=p.discount_rate + 0.02))[
+        "buy_minus_rent"
+    ]
+    assert same == pytest.approx(base)
+    moved = model.simulate(replace(p, market_return=p.market_return + 0.03))[
+        "buy_minus_rent"
+    ]
+    assert moved != pytest.approx(base)
+
+
+# --------------------------------------------------------------------------
 # Monotonicity of the headline verdict
 # --------------------------------------------------------------------------
 def test_buy_minus_rent_increases_with_appreciation(p):
@@ -184,15 +211,16 @@ def test_breakeven_appreciation_is_a_root(p):
 def test_breakeven_hold_is_first_winning_year(p):
     h = model.breakeven_hold(p)
     if h is None:
-        # Buying never wins within the loan term.
-        for y in range(1, p.loan_term_years + 1):
+        # Buying never wins within the loan term (search starts at the 2y minimum).
+        for y in range(2, p.loan_term_years + 1):
             assert (
                 model.simulate(replace(p, holding_period_years=y))["buy_minus_rent"]
                 <= 0
             )
     else:
+        assert h >= 2
         assert model.simulate(replace(p, holding_period_years=h))["buy_minus_rent"] > 0
-        if h > 1:
+        if h > 2:
             prev = model.simulate(replace(p, holding_period_years=h - 1))
             assert prev["buy_minus_rent"] <= 0
 
@@ -257,7 +285,8 @@ def test_tornado_sorted_by_range_and_covers_shocks(p):
         {"down_payment_pct": 1.0},  # all cash, no loan
         {"down_payment_pct": 0.0},  # fully financed
         {"mortgage_rate": 0.0},  # zero-rate branch
-        {"market_return": 0.0},  # zero-discount branch
+        {"market_return": 0.0},  # zero equity-return branch
+        {"discount_rate": 0.0},  # zero-discount branch (CRF fallback)
         {"holding_period_years": 100},  # far beyond the loan term
         {"home_appreciation_rate": -0.10},
         {"property_tax_basis": "purchase"},
