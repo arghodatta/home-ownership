@@ -120,8 +120,10 @@ def render_sidebar() -> Params:
     with st.sidebar:
         st.header("Parameters")
         st.caption(
-            "All inputs are editable. Defaults are illustrative "
-            "(≈ a Cook County condo)."
+            "Every field is editable — the starting values are just a worked "
+            "**example** (a ~$1M Chicago-area condo, 20% down, a ~6.75% mortgage), "
+            "not a recommendation. Change any of them to match your situation and "
+            "the whole page updates live."
         )
         col_reset, col_pin = st.columns(2)
         if col_reset.button("↺ Reset", width="stretch", help="Restore all defaults"):
