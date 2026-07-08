@@ -102,10 +102,10 @@ def main() -> None:
 
     st.divider()
     st.caption(
-        "Defaults are illustrative and not financial advice. Property tax, "
-        "insurance, and maintenance scale with home value; HOA grows with "
-        "inflation; the tax shield uses itemized-vs-standard with the $750k "
-        "mortgage-interest and SALT caps."
+        "Defaults are illustrative and not financial advice. Insurance and "
+        "maintenance scale with home value; property tax follows the assessment "
+        "basis you choose; HOA and rent grow at their own rates; the tax shield "
+        "uses itemized-vs-standard with the $750k mortgage-interest and SALT caps."
     )
 
 

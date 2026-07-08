@@ -43,7 +43,10 @@ class Params:
     loan_term_years: int = 30
 
     # ---- Recurring carry ----
-    property_tax_rate: float = 0.025  # effective, % of home value / yr
+    property_tax_rate: float = 0.025  # effective, % of assessed value / yr
+    property_tax_basis: str = (
+        "capped"  # "market" | "purchase" | "capped" (see _assessed_value)
+    )
     hoa_monthly: float = 300.0  # grows with inflation
     insurance_rate: float = 0.0025  # % of home value / yr
     maintenance_rate: float = 0.0025  # % of home value / yr
@@ -80,6 +83,34 @@ class Params:
 
     # ---- Rent counterfactual (only used in the rent-vs-buy section) ----
     monthly_rent: float = 4_800.0
+    rent_growth_rate: float = 0.03  # annual rent escalation, independent of home price
+
+
+def _assessed_value(p: Params, year0, hv):
+    """Assessed value used for property tax, per the chosen `property_tax_basis`.
+
+    ``year0`` is the 0-based year index (array) and ``hv`` the market-value path.
+
+      - "market":   assessed = current market value (taxes rise with the home).
+      - "purchase": assessed frozen at the purchase price (CA Prop-13 style, no
+                    reassessment while you hold).
+      - "capped":   assessed grows off the purchase price at max(2%, inflation)
+                    per year — the annual reassessment cap.
+      - "ptell":    assessed grows off the purchase price at min(5%, inflation)
+                    per year — the Illinois PTELL extension-limitation cap.
+    """
+    basis = p.property_tax_basis
+    if basis == "purchase":
+        return np.full(np.shape(hv), p.house_price, dtype=float)
+    if basis == "capped":
+        growth = max(0.02, p.inflation_rate)
+        return p.house_price * (1.0 + growth) ** year0
+    if basis == "ptell":
+        growth = min(0.05, p.inflation_rate)
+        return p.house_price * (1.0 + growth) ** year0
+    if basis != "market":
+        raise ValueError(f"unknown property_tax_basis: {basis!r}")
+    return hv
 
 
 def simulate(p: Params) -> dict:
@@ -99,47 +130,59 @@ def simulate(p: Params) -> dict:
     )
 
     months = p.holding_period_years * 12
-    balance = loan0
-    recs = []
-    for m in range(1, months + 1):
-        year = (m - 1) // 12  # 0-based year index for HOA inflation
-        hv = p.house_price * (1 + p.home_appreciation_rate) ** (
-            m / 12.0
-        )  # end-of-month value
 
-        interest_m = balance * r_m
-        principal_m = min(pmt - interest_m, balance)
-        pay_m = interest_m + principal_m
-        balance -= principal_m
+    # ---- Vectorized monthly schedule (no Python loop) --------------------
+    # k is the 0-based month index; month number m = k + 1.
+    k = np.arange(months)
+    m_idx = k + 1
+    year0 = k // 12  # 0-based year index (HOA inflation, tax escalators)
 
-        prop_tax_m = p.property_tax_rate * hv / 12.0
-        ins_m = p.insurance_rate * hv / 12.0
-        maint_m = p.maintenance_rate * hv / 12.0
-        hoa_m = p.hoa_monthly * (1 + p.inflation_rate) ** year
-        pmi_m = (
-            (p.pmi_rate * loan0 / 12.0)
-            if p.house_price > 0 and (balance / p.house_price) > 0.80
-            else 0.0
+    # Closed-form amortization. Balance after (k+1) payments follows the
+    # recurrence bal_j = bal_{j-1}(1+r) - pmt, solved directly; clamped at 0 so
+    # holding past the loan term leaves a paid-off (zero) balance.
+    if r_m > 0:
+        g_m = (1.0 + r_m) ** m_idx
+        bal_end = loan0 * g_m - pmt * (g_m - 1.0) / r_m
+    else:
+        bal_end = loan0 - pmt * m_idx
+    bal_end = np.maximum(bal_end, 0.0)
+    bal_start = np.concatenate(([loan0], bal_end[:-1]))
+
+    # principal = bal_start - bal_end reproduces min(pmt - interest, balance):
+    # it equals pmt - interest while the loan is live and the exact remaining
+    # balance in the payoff month, then 0 once bal_start hits 0.
+    interest = np.where(bal_start > 0, bal_start * r_m, 0.0)
+    principal = bal_start - bal_end
+    pi = interest + principal
+
+    hv = p.house_price * (1 + p.home_appreciation_rate) ** (m_idx / 12.0)
+    assessed = _assessed_value(p, year0, hv)
+
+    prop_tax = p.property_tax_rate * assessed / 12.0
+    ins = p.insurance_rate * hv / 12.0
+    maint = p.maintenance_rate * hv / 12.0
+    hoa = p.hoa_monthly * (1 + p.inflation_rate) ** year0
+    if p.house_price > 0:
+        pmi = np.where(bal_end / p.house_price > 0.80, p.pmi_rate * loan0 / 12.0, 0.0)
+    else:
+        pmi = np.zeros(months)
+
+    mdf = pd.DataFrame(
+        dict(
+            month=m_idx,
+            year=year0 + 1,
+            home_value=hv,
+            balance=bal_end,
+            interest=interest,
+            principal=principal,
+            pi=pi,
+            prop_tax=prop_tax,
+            insurance=ins,
+            maintenance=maint,
+            hoa=hoa,
+            pmi=pmi,
         )
-
-        recs.append(
-            dict(
-                month=m,
-                year=year + 1,
-                home_value=hv,
-                balance=balance,
-                interest=interest_m,
-                principal=principal_m,
-                pi=pay_m,
-                prop_tax=prop_tax_m,
-                insurance=ins_m,
-                maintenance=maint_m,
-                hoa=hoa_m,
-                pmi=pmi_m,
-            )
-        )
-
-    mdf = pd.DataFrame(recs)
+    )
 
     # ---- Annual tax shield (itemized vs standard) ----
     ann = (
@@ -166,11 +209,10 @@ def simulate(p: Params) -> dict:
         + mdf["pmi"]
         - mdf["tax_benefit"]
     )
-    # Monthly rent path — tracks the home's value (a stable rent yield) rather
-    # than a separate, slower escalator. Over long horizons this keeps rent and
-    # ownership cost linked, so a paid-off home stays cheap *relative to rent*
-    # instead of the two diverging unboundedly.
-    mdf["rent"] = p.monthly_rent * (1 + p.home_appreciation_rate) ** (
+    # Monthly rent path — escalates at its own `rent_growth_rate`, independent of
+    # home-price appreciation. (Historically rents track incomes/inflation, which
+    # can diverge markedly from home-price growth over a holding period.)
+    mdf["rent"] = p.monthly_rent * (1 + p.rent_growth_rate) ** (
         (mdf["month"] - 1) // 12
     )
 
@@ -448,7 +490,22 @@ PARAM_GROUPS = {
             0.001,
             0.0,
             0.1,
-            "Effective annual property tax rate.",
+            "Effective annual property tax rate, applied to the assessed value.",
+        ),
+        (
+            "property_tax_basis",
+            "Property tax assessed on",
+            "choice",
+            (
+                ("market", "Current market value"),
+                ("purchase", "Purchase price (CA Prop-13, frozen)"),
+                ("capped", "Purchase price + max(2%, inflation)/yr"),
+                ("ptell", "Purchase price + min(5%, inflation)/yr (IL PTELL)"),
+            ),
+            None,
+            None,
+            "What the tax is levied on: the home's current value, the frozen "
+            "purchase price, or the purchase price grown at the reassessment cap.",
         ),
         (
             "hoa_monthly",
@@ -612,6 +669,15 @@ PARAM_GROUPS = {
             0,
             None,
             "Rent for the equivalent home you would otherwise rent.",
+        ),
+        (
+            "rent_growth_rate",
+            "Rent growth (%/yr)",
+            "pct",
+            0.005,
+            -0.05,
+            0.3,
+            "Annual rent escalation, independent of home-price appreciation.",
         ),
     ],
 }

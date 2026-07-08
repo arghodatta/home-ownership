@@ -30,6 +30,20 @@ def _widget(attr, label, kind, step, lo, hi, help_txt, default):
             kwargs["value"] = float(default * 100)
         return st.number_input(label, **kwargs) / 100.0
 
+    if kind == "choice":
+        # `step` holds the option list: a tuple of (value, display label) pairs.
+        options = [v for v, _ in step]
+        labels = dict(step)
+        kwargs = dict(
+            options=options,
+            format_func=lambda v: labels[v],
+            help=help_txt,
+            key=key,
+        )
+        if not seeded:
+            kwargs["index"] = options.index(default)
+        return st.selectbox(label, **kwargs)
+
     if kind == "int":
         kwargs = dict(
             min_value=(None if lo is None else int(lo)),
@@ -63,9 +77,14 @@ def _seed_from_query_params() -> None:
     if not qp:
         return
     for specs in PARAM_GROUPS.values():
-        for attr, _label, kind, *_rest in specs:
+        for attr, _label, kind, step, *_rest in specs:
             key = f"param_{attr}"
             if attr not in qp or key in st.session_state:
+                continue
+            if kind == "choice":
+                valid = {v for v, _ in step}
+                if qp[attr] in valid:
+                    st.session_state[key] = qp[attr]
                 continue
             try:
                 raw = float(qp[attr])
@@ -81,9 +100,13 @@ def _seed_from_query_params() -> None:
 
 def _sync_query_params(params: Params) -> None:
     """Write the current parameters into the URL so the scenario is shareable."""
+
+    def _fmt(v):
+        return f"{v:.10g}" if isinstance(v, (int, float)) else str(v)
+
     st.query_params.from_dict(
         {
-            attr: f"{getattr(params, attr):.10g}"
+            attr: _fmt(getattr(params, attr))
             for specs in PARAM_GROUPS.values()
             for attr, *_ in specs
         }

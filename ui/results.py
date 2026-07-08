@@ -34,8 +34,13 @@ The simulation walks forward one month at a time and records:
 - **Mortgage payment (P&I)** stays fixed, but each month is split into
   **interest** (the bank's fee, largest early on) and **principal** (which chips
   away at the loan).
-- **Property tax, insurance, and maintenance** are charged as a % of the home's
-  *current* value, so they rise as the home appreciates.
+- **Insurance and maintenance** are charged as a % of the home's *current*
+  value, so they rise as the home appreciates.
+- **Property tax** is a % of the *assessed* value, which you can base on the
+  home's current market value, freeze at the purchase price (California
+  Prop-13 style), grow off the purchase price at the reassessment cap of
+  max(2%, inflation) per year, or grow it at min(5%, inflation) per year
+  (Illinois PTELL extension-limitation cap).
 - **HOA dues** start at your input and grow with inflation each year.
 - **PMI** (mortgage insurance) is charged only while you owe more than 80% of the
   home's original price, then automatically drops off.
@@ -72,8 +77,15 @@ When the holding period ends, the home is "sold":
   is compared with the renter's wealth. Whoever has more **wins**.
 
 #### A few things to keep in mind
-- Rent is assumed to track the home's value over time, so a paid-off home stays
-  cheap *relative to rent* rather than the two drifting apart forever.
+- Rent escalates at its own **rent-growth rate**, set independently of home-price
+  appreciation — historically rents track incomes/inflation, which can diverge
+  from home prices over a holding period.
+- **Every rate is assumed to hold constant for the whole horizon** — appreciation,
+  inflation, the mortgage rate, market return, tax rates, and the property-tax
+  escalators never change year to year. Reality is bumpier: rates move, markets
+  have good and bad stretches, and tax law shifts. Treat the output as a smooth
+  central estimate, not a forecast, and lean on the **Sensitivity** tab to see how
+  much the verdict swings when the key assumptions are wrong.
 - The comparison is deliberately **symmetric** — same starting cash, same market
   return, same capital-gains treatment on both sides — so it isn't rigged for
   either choice.
