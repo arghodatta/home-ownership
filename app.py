@@ -50,6 +50,8 @@ def main() -> None:
         "Adjust the parameters in the sidebar; everything updates live."
     )
 
+    results.methodology()
+    st.markdown("")
     results.verdict_banner(s)
     st.markdown("")
     results.kpi_row(s, base=base)

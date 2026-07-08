@@ -43,14 +43,10 @@ class Params:
     loan_term_years: int = 30
 
     # ---- Recurring carry ----
-    property_tax_rate: float = (
-        0.021  # effective, % of home value / yr (Cook County ~2%)
-    )
-    hoa_monthly: float = 400.0  # grows with inflation
-    insurance_rate: float = 0.005  # % of home value / yr
-    maintenance_rate: float = (
-        0.010  # % of home value / yr (~1%; often forgotten, large)
-    )
+    property_tax_rate: float = 0.025  # effective, % of home value / yr
+    hoa_monthly: float = 300.0  # grows with inflation
+    insurance_rate: float = 0.0025  # % of home value / yr
+    maintenance_rate: float = 0.0025  # % of home value / yr
     pmi_rate: float = 0.006  # % of ORIGINAL loan / yr, while LTV > 80% of orig price
 
     # ---- Growth / macro ----
