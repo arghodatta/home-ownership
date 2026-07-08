@@ -74,6 +74,64 @@ def test_no_pmi_with_20pct_down(p):
 
 
 # --------------------------------------------------------------------------
+# Property tax basis
+# --------------------------------------------------------------------------
+def test_property_tax_purchase_basis_is_constant(p):
+    """On the 'purchase' basis the assessed value is frozen at the price."""
+    m = model.simulate(replace(p, property_tax_basis="purchase"))["monthly"]
+    monthly_tax = p.property_tax_rate * p.house_price / 12.0
+    assert np.allclose(m["prop_tax"], monthly_tax)
+
+
+def test_property_tax_capped_grows_at_reassessment_cap(p):
+    """'capped' grows off the purchase price at max(2%, inflation)/yr, and the
+    first year is assessed at the purchase price."""
+    q = replace(p, property_tax_basis="capped", inflation_rate=0.01)
+    m = model.simulate(q)["monthly"]
+    yr1_assessed = m[m["year"] == 1]["prop_tax"].sum() / q.property_tax_rate
+    yr2_assessed = m[m["year"] == 2]["prop_tax"].sum() / q.property_tax_rate
+    assert yr1_assessed == pytest.approx(q.house_price)
+    # inflation is 1% < 2%, so the cap (2%) binds.
+    assert yr2_assessed == pytest.approx(q.house_price * 1.02)
+
+
+def test_property_tax_ptell_grows_at_min_5pct_inflation(p):
+    """IL PTELL grows the assessed value off the purchase price at min(5%, CPI)."""
+    for infl, exp_growth in [(0.07, 0.05), (0.01, 0.01)]:
+        q = replace(p, property_tax_basis="ptell", inflation_rate=infl)
+        m = model.simulate(q)["monthly"]
+        yr1 = m[m["year"] == 1]["prop_tax"].sum() / q.property_tax_rate
+        yr2 = m[m["year"] == 2]["prop_tax"].sum() / q.property_tax_rate
+        assert yr1 == pytest.approx(q.house_price)
+        assert yr2 == pytest.approx(q.house_price * (1 + exp_growth))
+
+
+def test_property_tax_basis_ordering_when_home_outgrows_cap(p):
+    """With appreciation above the cap: purchase < capped < market total tax."""
+    kw = dict(home_appreciation_rate=0.05, inflation_rate=0.02)
+    tax = lambda b: model.simulate(replace(p, property_tax_basis=b, **kw))["monthly"][
+        "prop_tax"
+    ].sum()
+    assert tax("purchase") < tax("capped") < tax("market")
+
+
+# --------------------------------------------------------------------------
+# Rent path
+# --------------------------------------------------------------------------
+def test_rent_escalates_with_rent_growth_only(p):
+    """Rent grows at rent_growth_rate and is independent of appreciation."""
+    flat = model.simulate(replace(p, rent_growth_rate=0.0))["monthly"]["rent"]
+    assert np.allclose(flat, p.monthly_rent)  # 0% growth => level rent
+    lo = model.simulate(replace(p, home_appreciation_rate=0.01))["monthly"][
+        "rent"
+    ].sum()
+    hi = model.simulate(replace(p, home_appreciation_rate=0.09))["monthly"][
+        "rent"
+    ].sum()
+    assert lo == pytest.approx(hi)  # appreciation must not move rent
+
+
+# --------------------------------------------------------------------------
 # Sale bridge
 # --------------------------------------------------------------------------
 def test_net_proceeds_identity(p):
@@ -202,6 +260,10 @@ def test_tornado_sorted_by_range_and_covers_shocks(p):
         {"market_return": 0.0},  # zero-discount branch
         {"holding_period_years": 100},  # far beyond the loan term
         {"home_appreciation_rate": -0.10},
+        {"property_tax_basis": "purchase"},
+        {"property_tax_basis": "capped"},
+        {"property_tax_basis": "ptell"},
+        {"rent_growth_rate": -0.02},
     ],
 )
 def test_edge_inputs_do_not_raise(p, kw):
